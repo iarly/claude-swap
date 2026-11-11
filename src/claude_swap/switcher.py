@@ -2011,6 +2011,7 @@ class ClaudeAccountSwitcher:
                     login_expires_at=oauth.login_expires_at_epoch(creds),
                     policy=self._policy_from_data(seq_data, n),
                     subscription_plan=plans.get(n),
+                    team=(seq_data.get("accounts", {}).get(n) or {}).get("team") or "",
                 )
             )
         return AccountsSnapshot(
@@ -4305,6 +4306,8 @@ class ClaudeAccountSwitcher:
         email: str | None = None,
         slot: int | None = None,
         assume_yes: bool = False,
+        team: str | None = None,
+        team_revision: str | None = None,
     ) -> None:
         """Register a raw OAuth setup-token or managed API key as a new account.
 
@@ -4329,6 +4332,12 @@ class ClaudeAccountSwitcher:
                    priority.
             assume_yes: Skip the occupied-slot overwrite prompt (callers with
                    their own confirmation UI, e.g. the TUI, confirm first).
+            team:  Team this account belongs to (set by ``team sync`` and
+                   ``add-token --into``); stored as the record's ``team``. An
+                   account never changes sides: re-adding a personal account's
+                   email as a team account, or the reverse, is refused.
+            team_revision: The vault revision the token came from, stored as
+                   ``teamSecretRevision`` so ``sync`` skips unchanged secrets.
         """
         self._refuse_session_shell()
         import getpass
@@ -4364,6 +4373,8 @@ class ClaudeAccountSwitcher:
         # identity is matched on (email, org) only, so an api-key and an OAuth
         # account sharing an email would be indistinguishable at switch time.
         self._reject_cross_kind_collision(email, is_api_key)
+        self._reject_cross_team_collision(email, team)
+        owner_tag = f"[team {team}]" if team else "[personal]"
 
         # Build the credential payload by kind: a managed key is stored raw; an
         # OAuth setup-token is wrapped in Claude Code's credential JSON. The
@@ -4403,13 +4414,15 @@ class ClaudeAccountSwitcher:
             self._usage_store.clear_dead_token(
                 [account_num], {account_num: (email, "")}
             )
+            if team_revision is not None:
+                seq["accounts"][account_num]["teamSecretRevision"] = team_revision
             seq["lastUpdated"] = get_timestamp()
             self._write_json(self.sequence_file, seq)
             kind_label = "API key" if is_api_key else "token"
             self._logger.info(f"Updated {kind_label} for account {account_num}: {email}")
             print(
                 f"{accent(f'Updated {kind_label}')} for Account {account_num} "
-                f"({email} {muted('[personal]')})."
+                f"({email} {muted(owner_tag)})."
             )
             return
 
@@ -4511,6 +4524,10 @@ class ClaudeAccountSwitcher:
         }
         if is_api_key:
             record["kind"] = "api_key"
+        if team:
+            record["team"] = team
+            if team_revision is not None:
+                record["teamSecretRevision"] = team_revision
         record.update(carried)
         data["accounts"][account_num] = record
         if int(account_num) not in data["sequence"]:
@@ -4525,8 +4542,27 @@ class ClaudeAccountSwitcher:
             print(f"{dimmed(f'Moved from slot {migrate_from} → {slot}')}")
         print(
             f"{accent('Added')} Account {account_num}: {email} "
-            f"{muted('[personal]')} {muted(f'(from {source_label})')}"
+            f"{muted(owner_tag)} {muted(f'(from {source_label})')}"
         )
+
+    def _reject_cross_team_collision(self, email: str, team: str | None) -> None:
+        """Refuse to turn a personal account into a team one, or move it across teams.
+
+        Identity is (email, org), so the same email can only be one account;
+        silently overwriting would hand a personal token to ``team sync`` (or
+        a team token to ``export``).
+        """
+        data = self._get_sequence_data() or {}
+        for acc in data.get("accounts", {}).values():
+            if acc.get("email") != email or acc.get("organizationUuid", ""):
+                continue
+            existing = acc.get("team") or None
+            if existing != (team or None):
+                have = f"team '{existing}'" if existing else "a personal account"
+                want = f"team '{team}'" if team else "a personal account"
+                raise ValidationError(
+                    f"{email} is already {have} here; it can't also be {want}"
+                )
 
     def remove_account(self, identifier: str, assume_yes: bool = False) -> None:
         """Remove account from managed accounts.
@@ -6148,6 +6184,7 @@ class ClaudeAccountSwitcher:
                     policy=self._policy_from_data(seq_data, str(num)),
                     login_expires_at=oauth.login_expires_at_iso(creds),
                     subscription_plan=(plans or {}).get(str(num)),
+                    team=(seq_data.get("accounts", {}).get(str(num)) or {}).get("team") or "",
                 )
             )
         payload = {
@@ -6207,6 +6244,9 @@ class ClaudeAccountSwitcher:
         print(bolded("Accounts:"))
         for i, (num, email, org_name, org_uuid, is_active, creds, alias) in enumerate(accounts_info):
             tag = self._get_display_tag(email, org_name, org_uuid)
+            team = (seq_data.get("accounts", {}).get(str(num)) or {}).get("team")
+            if team:
+                tag = f"team {team}"
             label = f"{accent(alias)} ({email})" if alias else email
             markers = ""
             if is_active:
@@ -7464,6 +7504,29 @@ class ClaudeAccountSwitcher:
         )
 
     def _perform_switch(
+        self,
+        target_account: str,
+        emit_output: bool = True,
+        force_activate: bool = False,
+        provenance: dict | None = None,
+    ) -> dict:
+        """:meth:`_switch_core`, then publish team presence for a real switch.
+
+        The hook runs after the core returned, so after every cswap and Claude
+        Code lock is released; it is best-effort and never raises.
+        """
+        op = self._switch_core(
+            target_account,
+            emit_output=emit_output,
+            force_activate=force_activate,
+            provenance=provenance,
+        )
+        from claude_swap.team.presence import after_switch
+
+        after_switch(self, op)
+        return op
+
+    def _switch_core(
         self,
         target_account: str,
         emit_output: bool = True,

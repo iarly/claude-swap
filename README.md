@@ -412,11 +412,27 @@ cswap add-token --email user@example.com     # optional label override
 
 **Note:** Third-party providers configured through `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` are not managed or switched; those exported variables stay in effect after a switch, so unset them to use the swapped account.
 
+### Share accounts with a team (Azure Key Vault)
+
+Put setup-tokens or API keys in a team's Azure Key Vault, with access controlled by Entra ID, and see who is on which account. Needs `uv tool install "claude-swap[azure]"`.
+
+```bash
+cswap login az --subscription-id <id> --keyvault <vault-name>
+cswap team register xpto --storage https://<account>.table.core.windows.net   # admin, once
+cswap add-token sk-ant-oat01-... --email shared1@example.com --into xpto      # admin
+cswap team join xpto                                                           # members
+cswap team status
+```
+
+`cswap watch` then groups accounts by team, shows who is on each, and picks up tokens the admin replaces. Only `add-token` accounts can be shared, because a normal login's token rotates. Setup, roles and details: [docs/team.md](https://github.com/realiti4/claude-swap/blob/main/docs/team.md).
+
 ## Documentation
 
 - [docs/auto-switch.md](https://github.com/realiti4/claude-swap/blob/main/docs/auto-switch.md) — the exact auto-switch rules: hysteresis margins, landing rules, per-account thresholds and tiers, polling cadence. Read it to find out why it did or didn't switch.
 - [docs/json-output.md](https://github.com/realiti4/claude-swap/blob/main/docs/json-output.md) — every field in `--json` output, including the optional ones. Read it before writing a script against `cswap list --json` or `cswap auto --json`.
 - [docs/menubar.md](https://github.com/realiti4/claude-swap/blob/main/docs/menubar.md) — how the macOS menu bar runs under launchd: start at login, the wrapper app in `/Applications`, file locations, upgrades, the Login Items switch. Read it when the icon is missing or the service misbehaves.
+
+- [docs/team.md](https://github.com/realiti4/claude-swap/blob/main/docs/team.md) — sharing accounts through Azure Key Vault: what to create in Azure, the roles, every `cswap team` command, what syncs on its own and the limits.
 
 `cswap --help` and `cswap <command> --help` document every flag.
 

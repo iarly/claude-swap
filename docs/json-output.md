@@ -27,6 +27,7 @@ These apply to `list` rows and the managed active row from `status --json`. All 
 | `usageError` | `usage` is null and nothing else explains it (`usageStatus` is `unavailable`) | The last fetch failure by kind (e.g. `http-429`, `timeout`). |
 | `usageRetryAt` | the cache is backing off from that failure | The time of the next attempt. |
 | `disabled` | the account is held out of rotation with `cswap disable` | `true`; absent otherwise. |
+| `team` | the account was shared through `cswap team` (see docs/team.md) | the team name |
 | `threshold` | a per-account threshold is set with `cswap threshold` | e.g. `85.0`; absent otherwise, so a fleet that never sets a policy emits rows identical to before. |
 | `alias` | an alias is set with `cswap alias` | e.g. `"dev"`; accounts without one omit the key. |
 | `loginExpiresAt` | the stored login records when its refresh token expires | ISO-8601 UTC: the moment the slot will need a fresh `/login` and `cswap add --slot N`, so a script can warn a few days ahead instead of discovering `relogin_required`. Absent when Claude Code recorded no such date for that login. |

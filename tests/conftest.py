@@ -999,3 +999,24 @@ def _crossing_clock(reads):
         return tick
 
     return clock
+
+
+@pytest.fixture(autouse=True)
+def team_backend():
+    """Every test runs against an in-memory team backend (no Azure, no SDK).
+
+    Tests that exercise the team feature take this fixture by name to seed
+    vaults and presence tables or to flip ``signed_in`` / ``offline``.
+    """
+    from claude_swap.team import stores
+
+    if str(Path(__file__).parent) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).parent))
+    from team_fakes import FakeBackend
+
+    backend = FakeBackend()
+    stores.set_backend(backend)
+    try:
+        yield backend
+    finally:
+        stores.set_backend(None)

@@ -17,6 +17,7 @@ No global command palette: actions live where their context is.
 
 from __future__ import annotations
 
+import time
 from functools import partial
 from typing import TYPE_CHECKING, Callable
 
@@ -26,7 +27,14 @@ from textual.screen import Screen
 from textual.widgets import Footer, ListView, Static
 
 from claude_swap.models import AccountsSnapshot
-from claude_swap.tui.widgets import AccountItem, AccountsPanel, MenuItem
+from claude_swap.tui.team import group_accounts, people_for
+from claude_swap.tui.widgets import (
+    AccountItem,
+    AccountsPanel,
+    GroupHeader,
+    MenuItem,
+    people_text,
+)
 
 if TYPE_CHECKING:
     from claude_swap.tui.app import CswapApp
@@ -223,7 +231,9 @@ class AccountListScreen(Screen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._numbers: list[str] = []
+        # The list's rows in order: ("h", heading) for a group heading,
+        # ("a", slot) for an account. Rebuilt only when it changes.
+        self._layout: list[tuple[str, str]] = []
         self._stamps: dict[str, float | None] = {}
 
     def compose(self) -> ComposeResult:
@@ -233,45 +243,80 @@ class AccountListScreen(Screen):
 
     def on_mount(self) -> None:
         self.watch(self.app, "snapshot", self._on_snapshot)
+        self.watch(self.app, "team_presence", self._on_presence)
 
     async def _on_snapshot(self, snap: AccountsSnapshot | None) -> None:
         if snap is None:
             return
         listview = self.query_one("#accounts", ListView)
-        numbers = [acc.number for acc in snap.accounts]
-        if numbers != self._numbers:
-            first_build = not self._numbers
+        groups = group_accounts(snap)
+        layout: list[tuple[str, str]] = []
+        rows = []
+        ordered = []
+        for heading, accounts in groups:
+            if heading is not None:
+                layout.append(("h", heading))
+                rows.append(GroupHeader(heading))
+            for acc in accounts:
+                layout.append(("a", acc.number))
+                rows.append(AccountItem(acc))
+                ordered.append(acc)
+        if layout != self._layout:
+            first_build = not self._layout
             previous = listview.index
             await listview.clear()
-            await listview.extend(AccountItem(acc) for acc in snap.accounts)
-            self._numbers = numbers
+            await listview.extend(rows)
+            self._layout = layout
             listview.index = (
                 self._index_after_build(snap, first_build, previous)
-                if numbers
+                if ordered
                 else None
             )
         else:
-            for item, acc in zip(listview.query(AccountItem), snap.accounts):
+            for item, acc in zip(listview.query(AccountItem), ordered):
                 item.set_account(acc)
+        self._apply_people()
         self._flash_updated(snap, listview)
+
+    def _on_presence(self, _value) -> None:
+        self._apply_people()
+
+    def _apply_people(self) -> None:
+        presence = getattr(self.app, "team_presence", None)
+        team = getattr(self.app, "team", None)
+        stale = team.settings.presence_stale_seconds if team is not None and team.enabled else 900.0
+        now = time.time()
+        for item in self.query_one("#accounts", ListView).query(AccountItem):
+            acc = next(
+                (a for a in (self.app.snapshot.accounts if self.app.snapshot else ()) if a.number == item.number),
+                None,
+            )
+            people = people_for(presence, acc, now, stale) if acc is not None else []
+            item.set_people(people_text(people))
+
+    def _account_index(self, number: str | None) -> int | None:
+        return next(
+            (i for i, (kind, value) in enumerate(self._layout) if kind == "a" and value == number),
+            None,
+        )
+
+    def _first_account_index(self) -> int:
+        return next((i for i, (kind, _) in enumerate(self._layout) if kind == "a"), 0)
 
     def _index_after_build(
         self, snap: AccountsSnapshot, first_build: bool, previous: int | None
     ) -> int | None:
-        """Where the cursor lands after the list is (re)built."""
+        """Where the cursor lands after the list is (re)built (never on a heading)."""
         if first_build:
             return self._active_index(snap)
-        return min(previous or 0, len(snap.accounts) - 1)
+        index = min(previous or 0, len(self._layout) - 1)
+        while index < len(self._layout) and self._layout[index][0] != "a":
+            index += 1
+        return index if index < len(self._layout) else self._first_account_index()
 
     def _active_index(self, snap: AccountsSnapshot) -> int:
-        return next(
-            (
-                i
-                for i, acc in enumerate(snap.accounts)
-                if acc.number == snap.active_number
-            ),
-            0,
-        )
+        index = self._account_index(snap.active_number)
+        return index if index is not None else self._first_account_index()
 
     def _flash_updated(self, snap: AccountsSnapshot, listview: ListView) -> None:
         """Briefly highlight rows whose stored measurement just advanced."""

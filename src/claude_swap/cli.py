@@ -1419,6 +1419,17 @@ def main() -> None:
     if argv and argv[0] == "move":
         _move_command(argv[1:])
         return
+    if argv and argv[0] in ("login", "logout", "keyvault", "team"):
+        from claude_swap import cli_team
+
+        handler = {
+            "login": cli_team.login_command,
+            "logout": cli_team.logout_command,
+            "keyvault": cli_team.keyvault_command,
+            "team": cli_team.team_command,
+        }[argv[0]]
+        handler(argv[1:])
+        return
 
     # Bare `cswap` in an interactive terminal opens the TUI dashboard (like
     # lazygit/k9s). TTY-gated on both ends so scripts and pipes keep getting
@@ -1551,6 +1562,15 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
             "defaults to setup-token-{slot}@token.local (or "
             "api-key-{slot}@token.local for API keys) since these tokens "
             "carry no real email metadata."
+        ),
+    )
+    parser.add_argument(
+        "--into",
+        metavar="TEAM",
+        help=(
+            "With 'add-token': also publish the token to TEAM's Key Vault, so "
+            "every member gets it on 'cswap team sync' (needs --email; see "
+            "'cswap team --help')"
         ),
     )
     parser.add_argument(
@@ -1810,6 +1830,11 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
     if args.email is not None and args.add_token is None:
         parser.error("--email can only be used with 'add-token'")
 
+    if args.into is not None and args.add_token is None:
+        parser.error("--into can only be used with 'add-token'")
+    if args.into is not None and args.slot is not None:
+        parser.error("--into picks its own slot; drop --slot")
+
     if args.account is not None and not args.export:
         parser.error("--account can only be used with 'export'")
 
@@ -1879,6 +1904,10 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
 
         if args.add_account:
             switcher.add_account(slot=args.slot, alias=args.alias)
+        elif args.add_token is not None and args.into is not None:
+            from claude_swap.team import service as team_service
+
+            team_service.publish_account(switcher, args.into, args.add_token, args.email)
         elif args.add_token is not None:
             switcher.add_account_from_token(
                 token=args.add_token,

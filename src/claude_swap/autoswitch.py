@@ -695,6 +695,13 @@ class AutoSwitchEngine:
         self.state_path = state_path or (switcher.backup_dir / STATE_FILENAME)
         self.clock = clock
         self._stop = threading.Event()
+        # Team presence (``cswap team``): people present per slot, read once
+        # per tick before any lock and handed to ``_rank_candidates`` so both
+        # phases of a consume-first commit rank on the same counts. None
+        # (no team joined, or presence unreadable) ranks exactly as before.
+        self._tick_occupancy: dict[str, int] | None = None
+        self._presence_cache = None
+        self._heartbeat_at = 0.0
         # Cuts the current inter-tick sleep short (a session threshold change
         # from the TUI should show a fresh decision now, not next interval).
         self._wake = threading.Event()
@@ -907,9 +914,51 @@ class AutoSwitchEngine:
 
     # -- tick -----------------------------------------------------------------
 
+    def _refresh_team_presence(self) -> None:
+        """Best-effort: occupancy for this tick and this machine's heartbeat.
+
+        Network only, before ``_tick_inner`` takes any lock; any failure
+        leaves occupancy None, which ranks exactly as without teams.
+        """
+        self._tick_occupancy = None
+        from claude_swap.team import registry
+
+        if not registry.has_teams(self.switcher.backup_dir):
+            return
+        try:
+            from claude_swap.settings import load_team_settings
+            from claude_swap.team import presence
+
+            team_settings = load_team_settings(self.switcher.backup_dir)
+            now = self.clock()
+            if now - self._heartbeat_at >= team_settings.heartbeat_seconds:
+                self._heartbeat_at = now
+                presence.publish(self.switcher, now=now)
+            if self._presence_cache is None:
+                self._presence_cache = presence.PresenceCache(team_settings.presence_refresh_seconds)
+            seen = self._presence_cache.get(self.switcher, now=now)
+            if not seen.rows:
+                return
+            from claude_swap.team.auth import signed_in_user
+
+            counts = presence.occupancy(
+                seen, now, team_settings.presence_stale_seconds,
+                self_user=signed_in_user(self.switcher.backup_dir),
+                self_machine=presence.machine_name(),
+            )
+            accounts = (self.switcher._get_sequence_data() or {}).get("accounts") or {}
+            self._tick_occupancy = {
+                num: counts.get((rec.get("team") or "", (rec.get("email") or "").lower()), 0)
+                for num, rec in accounts.items()
+            }
+        except Exception as e:  # noqa: BLE001 — presence never stops auto-switching
+            self.switcher._logger.debug("team presence unavailable this tick: %s", e)
+            self._tick_occupancy = None
+
     def tick(self) -> TickOutcome:
         """Evaluate once: poll usage, maybe switch. Never raises."""
         try:
+            self._refresh_team_presence()
             outcome = self._tick_inner()
             self._persist_health_counters(self._health_account)
             return outcome
@@ -1393,6 +1442,7 @@ class AutoSwitchEngine:
                 thresholds=kw["thresholds"],
                 usage=kw["usage"],
             )
+            kw.setdefault("occupancy", self._tick_occupancy)
             ranked = self._rank_candidates(no_return=no_return, **kw)
             if no_return is not None and not ranked[0] and recovered:
                 unbarred = self._rank_candidates(no_return=None, **kw)
@@ -2115,6 +2165,11 @@ class AutoSwitchEngine:
         # for every account, so a caller without per-account context behaves
         # exactly as this function did before per-account thresholds existed.
         thresholds: Mapping[str, float] | None = None,
+        # People present on each slot (team presence). Among healthy landings
+        # (proactive, consume-first) the least crowded account wins; for the
+        # escapes and the all-above fallback it only breaks a tie, since room
+        # left matters more there. None ranks exactly as without teams.
+        occupancy: Mapping[str, int] | None = None,
     ) -> tuple[list[str], bool, float | None]:
         """Filter and rank OAuth candidates for this tick's trigger.
 
@@ -2332,6 +2387,12 @@ class AutoSwitchEngine:
                     # over 44%. Most raw headroom instead, as when nothing is
                     # under its lines (all_above, above), under-line first.
                     key = (1, over, *most_room(num, h))
+            if occupancy is not None:
+                people = occupancy.get(num, 0)
+                if trigger in ("proactive", "consume-first") and not all_above:
+                    key = (people, *key)
+                else:
+                    key = (*key, people)
             qualifying.append((key, num))
         # Ascending by the strategy's key; list order (sequence order) breaks ties.
         qualifying.sort(key=lambda t: t[0])

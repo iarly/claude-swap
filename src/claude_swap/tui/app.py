@@ -26,6 +26,7 @@ from claude_swap.tui.autoview import AutoScreen
 from claude_swap.tui.dashboard import DashboardScreen, WatchScreen
 from claude_swap.tui.data import ActionResult, SnapshotSource, format_duration, run_action
 from claude_swap.tui.modals import AddTokenModal, ConfirmModal, OutputModal, TokenForm
+from claude_swap.tui.team import TeamWatcher
 from claude_swap.tui.theme import CSWAP_DARK, CSWAP_LIGHT
 
 
@@ -49,6 +50,9 @@ class CswapApp(App):
     snapshot: reactive[AccountsSnapshot | None] = reactive(None)
     refresh_status: reactive[str] = reactive("")
     busy: reactive[bool] = reactive(False)
+    # Latest presence read of every joined team (``team.presence.TeamPresence``),
+    # or None before the first read / with no team joined.
+    team_presence = reactive(None, always_update=True)
 
     def __init__(
         self,
@@ -85,6 +89,12 @@ class CswapApp(App):
             self._theme_name = load_ui_settings(switcher.backup_dir).theme
         except Exception:
             self._theme_name = "auto"
+        self._team_status = ""
+        self._team_status_at = 0.0
+        try:
+            self.team = TeamWatcher(self)
+        except Exception:
+            self.team = None  # a broken teams.json must not keep the TUI from opening
 
     def on_mount(self) -> None:
         self.register_theme(CSWAP_DARK)
@@ -100,6 +110,10 @@ class CswapApp(App):
         self.set_interval(self.POLL_INTERVAL_S, self._tick)
         self.set_interval(1.0, self._update_refresh_status)
         self._tick()
+        if self.team is not None:
+            self.team.start()
+            if self.team.enabled:
+                self.team.refresh_presence()
 
     # -- snapshot poll loop ---------------------------------------------------
 
@@ -194,6 +208,8 @@ class CswapApp(App):
                 taken_at=max(current.taken_at, snap.taken_at),
             )
         self._update_refresh_status()
+        if self.team is not None:
+            self.team.on_snapshot(self.snapshot)
 
     def _update_refresh_status(self) -> None:
         parts: list[str] = []
@@ -206,7 +222,16 @@ class CswapApp(App):
             elapsed = now - self._normal_started_at
             if elapsed >= self.POLL_INTERVAL_S:
                 parts.append(f"refreshing {format_duration(elapsed)}")
+        if self._team_status and now - self._team_status_at < self.TEAM_STATUS_S:
+            parts.append(self._team_status)
         self.refresh_status = " · ".join(parts)
+
+    TEAM_STATUS_S = 120.0  # how long a team event stays in the watch title
+
+    def set_team_status(self, message: str) -> None:
+        self._team_status = message
+        self._team_status_at = time.time()
+        self._update_refresh_status()
 
     def request_refresh(self, *, full: bool = False) -> None:
         if full:

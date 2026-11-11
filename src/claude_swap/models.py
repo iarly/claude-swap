@@ -251,6 +251,9 @@ class AccountSnapshot:
     # unreadable; see oauth.login_expires_at_epoch. Feeds the "re-login in
     # 5d 12h" note every account view shows while the login is due.
     login_expires_at: float | None = None
+    #: Team the account was shared through (``team sync``), or "" for a
+    #: personal one. Defaulted for the same reason as ``policy``.
+    team: str = ""
 
     @property
     def display_tag(self) -> str:

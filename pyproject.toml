@@ -28,6 +28,11 @@ classifiers = [
 
 [project.optional-dependencies]
 menubar = ["rumps>=0.4.0"]
+azure = [
+    "azure-data-tables>=12.6",
+    "azure-identity>=1.19",
+    "azure-keyvault-secrets>=4.9",
+]
 
 [project.urls]
 Homepage = "https://github.com/realiti4/claude-swap"

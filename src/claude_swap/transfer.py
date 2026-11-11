@@ -190,9 +190,26 @@ def export_accounts(
         resolved = switcher._resolve_account_identifier(account)
         if resolved is None or resolved not in accounts_map:
             raise TransferError(f"account not found: {account}")
+        if accounts_map[resolved].get("team"):
+            raise TransferError(
+                f"account {account} belongs to team '{accounts_map[resolved]['team']}'; "
+                "team accounts are shared through the team's Key Vault, not export"
+            )
         target_nums = [resolved]
     else:
-        target_nums = sorted(accounts_map.keys(), key=int)
+        # Team accounts stay under the vault's access control: a member who
+        # leaves the team must not keep a copy in some backup file.
+        team_nums = [n for n, rec in accounts_map.items() if rec.get("team")]
+        if team_nums:
+            _eprint(
+                f"Skipping {len(team_nums)} team account(s); they are shared "
+                "through their team's Key Vault"
+            )
+        target_nums = sorted(
+            (n for n in accounts_map if n not in team_nums), key=int
+        )
+        if not target_nums:
+            raise TransferError("no accounts to export — only team accounts are managed here")
 
     # Identify the live active account (live vault has fresher tokens than backup)
     current_identity = switcher._get_current_account()

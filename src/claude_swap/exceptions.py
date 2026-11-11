@@ -94,3 +94,21 @@ class MigrationIncomplete(ClaudeSwitchError):
     """
 
     pass
+
+
+class TeamError(ClaudeSwitchError):
+    """A team operation failed (Key Vault, Table Storage or the local team registry)."""
+
+    pass
+
+
+class TeamAuthRequired(TeamError):
+    """No usable Entra ID sign-in: run ``cswap login az`` first."""
+
+    pass
+
+
+class AzureExtraMissing(TeamError):
+    """The Azure SDK is not installed (``claude-swap[azure]`` extra)."""
+
+    pass
