@@ -41,6 +41,25 @@ class PresenceRow:
     last_seen: float
 
 
+@dataclass(frozen=True)
+class UsageRow:
+    """A usage reading of one team account, published by the machine that owns
+    the account's normal login (its "usage source", see ``team/usage.py``).
+
+    ``usage`` is the ``list --json`` projection (``json_output.usage_to_json``).
+    ``age_at_write`` is how old the measurement was when written, and
+    ``written_at`` when the store received it (the table's own timestamp), so a
+    reader computes the age without trusting the publisher's clock.
+    """
+
+    team: str
+    email: str
+    usage: dict
+    age_at_write: float
+    written_at: float
+    publisher: str = ""
+
+
 class SecretStore(Protocol):
     def list_secrets(self) -> list[SecretInfo]: ...
 
@@ -63,6 +82,12 @@ class PresenceStore(Protocol):
     def upsert(self, row: PresenceRow) -> None: ...
 
     def list(self, team: str) -> list[PresenceRow]: ...
+
+    def upsert_usage(self, row: UsageRow) -> None:
+        """Write a reading in the team's usage partition (never the presence one)."""
+        ...
+
+    def list_usage(self, team: str) -> list[UsageRow]: ...
 
 
 class Backend(Protocol):

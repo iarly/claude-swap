@@ -205,9 +205,11 @@ class TestCli:
         code, out, err = _cli(["add-token", TOKEN_A, "--into", "xpto"], capsys)
         assert code == 1 and "--email" in out + err
 
-    def test_into_with_slot_is_refused(self, temp_home: Path, team_backend, capsys):
-        code, _, err = _cli(["add-token", TOKEN_A, "--email", "a@x.io", "--into", "xpto", "--slot", "3"], capsys)
-        assert code == 2 and "--slot" in err
+    def test_into_with_slot_must_name_a_login(self, temp_home: Path, team_backend, capsys):
+        self._seed(team_backend)
+        _cli(["team", "register", "xpto", "--storage", ENDPOINT], capsys)
+        code, out, err = _cli(["add-token", TOKEN_A, "--email", "a@x.io", "--into", "xpto", "--slot", "3"], capsys)
+        assert code == 1 and "Slot 3" in out + err
 
     def test_into_only_with_add_token(self, temp_home: Path, team_backend, capsys):
         code, _, err = _cli(["list", "--into", "xpto"], capsys)

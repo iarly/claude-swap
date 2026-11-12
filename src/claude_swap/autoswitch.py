@@ -702,6 +702,7 @@ class AutoSwitchEngine:
         self._tick_occupancy: dict[str, int] | None = None
         self._presence_cache = None
         self._heartbeat_at = 0.0
+        self._usage_exchange_at = 0.0
         # Cuts the current inter-tick sleep short (a session threshold change
         # from the TUI should show a fresh decision now, not next interval).
         self._wake = threading.Event()
@@ -934,6 +935,13 @@ class AutoSwitchEngine:
             if now - self._heartbeat_at >= team_settings.heartbeat_seconds:
                 self._heartbeat_at = now
                 presence.publish(self.switcher, now=now)
+            if now - self._usage_exchange_at >= team_settings.presence_refresh_seconds:
+                # Before this tick reads usage, so adopted team readings (and
+                # their hold, which keeps the probe off) apply to it already.
+                self._usage_exchange_at = now
+                from claude_swap.team.usage import exchange
+
+                exchange(self.switcher)
             if self._presence_cache is None:
                 self._presence_cache = presence.PresenceCache(team_settings.presence_refresh_seconds)
             seen = self._presence_cache.get(self.switcher, now=now)
@@ -946,9 +954,11 @@ class AutoSwitchEngine:
                 self_user=signed_in_user(self.switcher.backup_dir),
                 self_machine=presence.machine_name(),
             )
+            from claude_swap.team.links import record_team
+
             accounts = (self.switcher._get_sequence_data() or {}).get("accounts") or {}
             self._tick_occupancy = {
-                num: counts.get((rec.get("team") or "", (rec.get("email") or "").lower()), 0)
+                num: counts.get((record_team(rec), (rec.get("email") or "").lower()), 0)
                 for num, rec in accounts.items()
             }
         except Exception as e:  # noqa: BLE001 — presence never stops auto-switching

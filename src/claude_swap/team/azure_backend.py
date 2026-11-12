@@ -10,12 +10,14 @@ stall a switch on a dead network.
 from __future__ import annotations
 
 import functools
+import json
+import time
 from datetime import datetime, timezone
 
 from claude_swap.exceptions import TeamAuthRequired, TeamError
 from claude_swap.paths import get_backup_root
 from claude_swap.team import auth
-from claude_swap.team.stores import PresenceRow, SecretInfo
+from claude_swap.team.stores import PresenceRow, SecretInfo, UsageRow
 
 _FAST = {"retry_total": 1, "connection_timeout": 3, "read_timeout": 5}
 _NORMAL = {"retry_total": 3, "connection_timeout": 10, "read_timeout": 30}
@@ -157,6 +159,48 @@ class AzurePresenceStore:
                     account_email=str(e.get("accountEmail", "") or ""),
                     since=float(e.get("since", 0) or 0),
                     last_seen=float(e.get("lastSeen", 0) or 0),
+                ))
+            return rows
+
+        return _translate_call(self._what, call)
+
+    def upsert_usage(self, row: UsageRow) -> None:
+        from azure.data.tables import UpdateMode  # noqa: PLC0415
+
+        from claude_swap.team.naming import usage_partition, usage_row_key  # noqa: PLC0415
+
+        entity = {
+            "PartitionKey": usage_partition(row.team),
+            "RowKey": usage_row_key(row.email),
+            "email": row.email,
+            "usage": json.dumps(row.usage),
+            "ageAtWrite": float(row.age_at_write),
+            "publisher": row.publisher,
+        }
+        _translate_call(self._what, lambda: self._client.upsert_entity(entity, mode=UpdateMode.REPLACE))
+
+    def list_usage(self, team: str) -> list[UsageRow]:
+        from claude_swap.team.naming import usage_partition  # noqa: PLC0415
+
+        def call():
+            rows = []
+            pk = usage_partition(team)
+            for e in self._client.query_entities("PartitionKey eq @pk", parameters={"pk": pk}):
+                try:
+                    usage = json.loads(e.get("usage") or "")
+                except ValueError:
+                    continue
+                # The service's own write time: the reader's clock is compared
+                # with Azure's, never with the publisher's.
+                stamp = (getattr(e, "metadata", None) or {}).get("timestamp")
+                written_at = stamp.timestamp() if stamp is not None else time.time()
+                rows.append(UsageRow(
+                    team=team,
+                    email=str(e.get("email", "") or "").lower(),
+                    usage=usage if isinstance(usage, dict) else {},
+                    age_at_write=float(e.get("ageAtWrite", 0) or 0),
+                    written_at=written_at,
+                    publisher=str(e.get("publisher", "") or ""),
                 ))
             return rows
 

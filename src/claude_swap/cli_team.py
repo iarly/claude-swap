@@ -166,6 +166,8 @@ def _print_report(report) -> None:
         print(f"  {accent('~')} {email} {muted('token updated' + note)}")
     for email in report.removed:
         print(f"  {accent('-')} {email}")
+    for email in report.unlinked:
+        print(f"  {accent('-')} {email} {muted('left the vault: your login stays, its usage is no longer shared')}")
     for line in report.skipped:
         warning(f"  ! {line}")
 
@@ -262,6 +264,9 @@ Examples:
                 reports, errors = sync.sync_all(switcher)
                 if not reports and not errors:
                     raise TeamError("No team joined on this machine: cswap team join <team>")
+            from claude_swap.team.usage import exchange
+
+            exchange(switcher)  # share/adopt usage readings too (best-effort)
             if args.json:
                 print(json.dumps({
                     "schemaVersion": 1,

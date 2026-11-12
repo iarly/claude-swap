@@ -1997,3 +1997,13 @@ class TestDeadTeamTokens:
         team = AccountsSnapshot("1", (replace(make_account(1, entry=dead), team="x"),), time.time())
         assert not dead_team_tokens(personal)
         assert dead_team_tokens(team)
+
+    def test_linked_login_never_triggers_a_vault_sync(self):
+        from dataclasses import replace
+
+        from claude_swap.json_output import USAGE_TOKEN_EXPIRED
+        from claude_swap.tui.team import dead_team_tokens
+
+        expired = make_usage_at(time.time(), sentinel=USAGE_TOKEN_EXPIRED)
+        linked = replace(make_account(1, entry=expired), team="x", team_linked=True)
+        assert not dead_team_tokens(AccountsSnapshot("1", (linked,), time.time()))

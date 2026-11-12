@@ -26,6 +26,7 @@ from pathlib import Path
 from claude_swap.exceptions import ClaudeSwitchError, TeamAuthRequired
 from claude_swap.fsutil import atomic_write_text
 from claude_swap.team import registry
+from claude_swap.team.links import record_team
 from claude_swap.team.naming import presence_row_key
 from claude_swap.team.stores import PresenceRow, get_backend
 
@@ -58,12 +59,17 @@ def _save_state(backup_dir: Path, state: dict) -> None:
 
 
 def active_team_account(seq_data: dict) -> tuple[str, str]:
-    """``(team, email)`` of the recorded active account; ``("", "")`` when personal or none."""
+    """``(team, email)`` of the recorded active account; ``("", "")`` when personal or none.
+
+    A slot linked to a team (the admin's own login of a team account, see
+    ``team/links.py``) is on that team account too, so it counts here.
+    """
     active = seq_data.get("activeAccountNumber")
     record = (seq_data.get("accounts") or {}).get(str(active)) if active is not None else None
-    if not record or not record.get("team"):
+    team = record_team(record)
+    if not team:
         return "", ""
-    return record["team"], record.get("email", "")
+    return team, (record.get("email") or "").lower()
 
 
 def publish(switcher, teams: list[str] | None = None, *, now: float | None = None) -> list[str]:
@@ -126,7 +132,7 @@ def after_switch(switcher, op: dict) -> None:
         touched = set()
         for ref in (from_ref, to_ref):
             number = ref.get("number") if isinstance(ref, dict) else None
-            team = (accounts.get(str(number)) or {}).get("team") if number is not None else None
+            team = record_team(accounts.get(str(number))) if number is not None else None
             if team:
                 touched.add(team)
         if not touched:

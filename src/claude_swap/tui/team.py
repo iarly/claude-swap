@@ -78,9 +78,14 @@ def people_for(
 
 
 def dead_team_tokens(snap: AccountsSnapshot) -> bool:
-    """Whether any team account currently reads as an expired or refused token."""
+    """Whether any team account currently reads as an expired or refused token.
+
+    Only slots the vault owns count: a linked login is the admin's own, its
+    "token expired" just means Claude Code has yet to refresh it, and a
+    vault sync could not change it anyway.
+    """
     for acc in snap.accounts:
-        if not acc.team:
+        if not acc.team or acc.team_linked:
             continue
         if acc.usage.sentinel in DEAD_SENTINELS or acc.usage.auth_dead_strikes:
             return True
@@ -136,6 +141,11 @@ class TeamWatcher:
         except Exception as e:  # noqa: BLE001 — never take the TUI down
             value = None
             self.app.call_from_thread(self.app.set_team_status, f"presence unavailable ({e})")
+        # Same cadence: share linked slots' usage, adopt the team's readings.
+        # The 3 s poll then shows adopted readings like any other.
+        from claude_swap.team.usage import exchange
+
+        exchange(self.switcher)
         self.app.call_from_thread(self._apply_presence, value)
 
     def _apply_presence(self, value) -> None:

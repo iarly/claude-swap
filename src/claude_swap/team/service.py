@@ -9,7 +9,7 @@ import time
 from claude_swap.credentials import looks_like_api_key
 from claude_swap.exceptions import ClaudeSwitchError, TeamError, ValidationError
 from claude_swap.models import get_timestamp
-from claude_swap.team import naming, presence, registry
+from claude_swap.team import links, naming, presence, registry
 from claude_swap.team.stores import get_backend
 from claude_swap.team.sync import SyncReport, _quiet, sync_team
 
@@ -70,10 +70,19 @@ def read_token(token: str) -> str:
     return token
 
 
-def publish_account(switcher, team: str, token: str, email: str | None) -> None:
-    """``add-token --into``: write the vault secret first, then the local slot.
+def publish_account(
+    switcher, team: str, token: str, email: str | None, *, slot: str | int | None = None
+) -> str | None:
+    """``add-token --into``: write the vault secret first, then this machine.
 
-    A failed vault write leaves nothing local, so the slot never claims a team
+    When this machine already holds a normal login of ``email`` (``slot``
+    picks it when there are several), a setup-token is not added as a second
+    slot: that login is linked to the team instead (``team/links.py``) and
+    publishes the account's usage, read for free, to the members. Otherwise a
+    team slot is added as before. Returns the linked slot, or None.
+
+    Everything that can refuse runs before the vault write, and a failed vault
+    write leaves nothing local, so this machine never claims a team account
     the vault doesn't know about.
     """
     team = naming.validate_team_name(team)
@@ -87,7 +96,13 @@ def publish_account(switcher, team: str, token: str, email: str | None) -> None:
     entry = registry.get(switcher.backup_dir, team)
     token = read_token(token)
     kind = "api_key" if looks_like_api_key(token) else "setup_token"
-    switcher._reject_cross_team_collision(email, team)
+    link = None
+    if kind == "setup_token":
+        link = links.find_link_target(switcher, email, slot)
+    elif slot is not None:
+        raise ValidationError("--slot with --into links a login to a setup-token; this is an API key")
+    if link is None:
+        switcher._reject_cross_team_collision(email, team)
     store = get_backend().secret_store(entry["vaultUrl"])
     revision = store.set_secret(
         naming.account_secret_name(team, email),
@@ -95,9 +110,22 @@ def publish_account(switcher, team: str, token: str, email: str | None) -> None:
         tags=naming.account_tags(team, email),
         content_type=naming.ACCOUNT_CONTENT_TYPE,
     )
+    if link is not None:
+        links.set_link(switcher, link, team)
+        print(f"Published {email} to team {team}.")
+        print(
+            f"Linked to slot {link}, your login of {email}: no second slot is added here, "
+            "and its usage is shared with the team."
+        )
+        print(
+            "  cswap cannot check that the setup-token belongs to this same account; "
+            "it trusts --email."
+        )
+        return link
     switcher.add_account_from_token(
         token=token, email=email, team=team, team_revision=revision, assume_yes=True
     )
+    return None
 
 
 def remove_account(switcher, team: str, email: str) -> SyncReport:
@@ -129,6 +157,9 @@ def leave(switcher, team: str) -> list[str]:
                 pass  # nothing else to move to; the slot goes anyway
         _quiet(switcher.remove_account, number, assume_yes=True)
         removed.append(rec.get("email", ""))
+    # A linked slot is this machine's own login: it stays, only the link goes.
+    for _email, (number, _rec) in links.linked_slots(switcher._get_sequence_data() or {}, team).items():
+        links.set_link(switcher, number, None)
     # Say goodbye in the table so this machine stops counting on the team.
     presence.publish(switcher, [team])
     registry.remove(switcher.backup_dir, team)

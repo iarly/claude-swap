@@ -162,6 +162,21 @@ def presence_row_key(user: str, machine: str) -> str:
     return _ROW_KEY_FORBIDDEN.sub("_", f"{user.lower()}|{machine.lower()}")[:512]
 
 
+def usage_partition(team: str) -> str:
+    """The team's usage partition in the presence table.
+
+    ``~`` is not allowed in a team name, so this can never be another team's
+    presence partition, and a presence query (``PartitionKey eq '<team>'``)
+    never returns a usage row.
+    """
+    return f"{team}~usage"
+
+
+def usage_row_key(email: str) -> str:
+    """The usage row of one account: its email, Table Storage-safe."""
+    return _ROW_KEY_FORBIDDEN.sub("_", email.lower())[:512]
+
+
 def short_user(upn: str) -> str:
     """The part of a UPN before ``@`` — what the watch shows per person."""
     return (upn or "?").split("@", 1)[0]

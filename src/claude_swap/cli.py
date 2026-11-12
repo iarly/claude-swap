@@ -1570,7 +1570,9 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
         help=(
             "With 'add-token': also publish the token to TEAM's Key Vault, so "
             "every member gets it on 'cswap team sync' (needs --email; see "
-            "'cswap team --help')"
+            "'cswap team --help'). A normal login of that email already here "
+            "is linked instead of adding a slot, and shares its usage with the "
+            "team; --slot picks it when there are several"
         ),
     )
     parser.add_argument(
@@ -1832,8 +1834,6 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
 
     if args.into is not None and args.add_token is None:
         parser.error("--into can only be used with 'add-token'")
-    if args.into is not None and args.slot is not None:
-        parser.error("--into picks its own slot; drop --slot")
 
     if args.account is not None and not args.export:
         parser.error("--account can only be used with 'export'")
@@ -1907,7 +1907,9 @@ The original flag spellings (%(prog)s --switch, %(prog)s --list, ...) keep worki
         elif args.add_token is not None and args.into is not None:
             from claude_swap.team import service as team_service
 
-            team_service.publish_account(switcher, args.into, args.add_token, args.email)
+            team_service.publish_account(
+                switcher, args.into, args.add_token, args.email, slot=args.slot
+            )
         elif args.add_token is not None:
             switcher.add_account_from_token(
                 token=args.add_token,

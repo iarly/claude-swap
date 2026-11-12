@@ -2011,7 +2011,17 @@ class ClaudeAccountSwitcher:
                     login_expires_at=oauth.login_expires_at_epoch(creds),
                     policy=self._policy_from_data(seq_data, n),
                     subscription_plan=plans.get(n),
-                    team=(seq_data.get("accounts", {}).get(n) or {}).get("team") or "",
+                    # A linked slot (the admin's own login of a team account)
+                    # groups and shows people with its team in the watch.
+                    team=(
+                        (seq_data.get("accounts", {}).get(n) or {}).get("team")
+                        or (seq_data.get("accounts", {}).get(n) or {}).get("teamLink")
+                        or ""
+                    ),
+                    team_linked=bool(
+                        (seq_data.get("accounts", {}).get(n) or {}).get("teamLink")
+                        and not (seq_data.get("accounts", {}).get(n) or {}).get("team")
+                    ),
                 )
             )
         return AccountsSnapshot(
@@ -2119,7 +2129,11 @@ class ClaudeAccountSwitcher:
     #: rewrites from the new credential. ``add_account`` and
     #: ``add_account_from_token`` rebuild a ``--slot`` record wholesale and
     #: carry exactly these across; a new per-account setting belongs here.
-    USER_ACCOUNT_SETTINGS: tuple[str, ...] = ("alias", "disabled", "threshold", "priority")
+    # ``teamLink``: the slot publishes its usage to a team (team/links.py); a
+    # re-login through ``cswap add`` must not silently stop that.
+    USER_ACCOUNT_SETTINGS: tuple[str, ...] = (
+        "alias", "disabled", "threshold", "priority", "teamLink",
+    )
 
     @classmethod
     def _carried_settings(cls, record: dict | None) -> dict:
@@ -4486,6 +4500,9 @@ class ClaudeAccountSwitcher:
                 carried = self._carried_settings(prior)
             if migrate_from:
                 carried.update(self._carried_settings(data["accounts"][migrate_from]))
+        # A token cannot read usage for free, so it is never a team's usage
+        # source (team/links.py): a link does not survive onto a token slot.
+        carried.pop("teamLink", None)
 
         if displace_slot:
             d_num, d_email, d_org = displace_slot
@@ -6244,9 +6261,12 @@ class ClaudeAccountSwitcher:
         print(bolded("Accounts:"))
         for i, (num, email, org_name, org_uuid, is_active, creds, alias) in enumerate(accounts_info):
             tag = self._get_display_tag(email, org_name, org_uuid)
-            team = (seq_data.get("accounts", {}).get(str(num)) or {}).get("team")
+            record = seq_data.get("accounts", {}).get(str(num)) or {}
+            team = record.get("team")
             if team:
                 tag = f"team {team}"
+            elif record.get("teamLink"):
+                tag = f"{tag}, usage for team {record['teamLink']}"
             label = f"{accent(alias)} ({email})" if alias else email
             markers = ""
             if is_active:

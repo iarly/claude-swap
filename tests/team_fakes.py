@@ -7,10 +7,12 @@ so no test can reach Azure, and the suite passes without the azure extra.
 from __future__ import annotations
 
 import itertools
+import time
+from dataclasses import replace
 
 from claude_swap.exceptions import TeamAuthRequired, TeamError
-from claude_swap.team.naming import presence_row_key
-from claude_swap.team.stores import PresenceRow, SecretInfo
+from claude_swap.team.naming import presence_row_key, usage_row_key
+from claude_swap.team.stores import PresenceRow, SecretInfo, UsageRow
 
 _revisions = itertools.count(1)
 
@@ -62,6 +64,7 @@ class FakePresenceStore:
     def __init__(self, backend: "FakeBackend") -> None:
         self.backend = backend
         self.rows: dict[str, dict[str, PresenceRow]] = {}
+        self.usage: dict[str, dict[str, UsageRow]] = {}
         self.table_ensured = False
 
     def ensure_table(self) -> None:
@@ -76,6 +79,16 @@ class FakePresenceStore:
         self.backend.check(presence=True)
         return list(self.rows.get(team, {}).values())
 
+    def upsert_usage(self, row: UsageRow) -> None:
+        self.backend.check(presence=True)
+        # The store stamps its own write time, like Table Storage's Timestamp.
+        stored = replace(row, written_at=self.backend.clock())
+        self.usage.setdefault(row.team, {})[usage_row_key(row.email)] = stored
+
+    def list_usage(self, team: str) -> list[UsageRow]:
+        self.backend.check(presence=True)
+        return list(self.usage.get(team, {}).values())
+
 
 class FakeBackend:
     def __init__(self, user: str = "me@corp.example") -> None:
@@ -87,6 +100,7 @@ class FakeBackend:
         self.presence_offline = False
         self.read_only = False
         self.fast_requests: list[str] = []
+        self.clock = time.time  # the "server" clock usage rows are stamped with
 
     def check(self, *, presence: bool = False) -> None:
         if not self.signed_in:

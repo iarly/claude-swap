@@ -254,6 +254,10 @@ class AccountSnapshot:
     #: Team the account was shared through (``team sync``), or "" for a
     #: personal one. Defaulted for the same reason as ``policy``.
     team: str = ""
+    #: ``team`` comes from a link (``team/links.py``): this is the admin's own
+    #: login of a team account, not a slot the team's vault owns. A vault sync
+    #: can't repair its token, so a dead one must not trigger one.
+    team_linked: bool = False
 
     @property
     def display_tag(self) -> str:

@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass, field
 
 from claude_swap.exceptions import ClaudeSwitchError
-from claude_swap.team import naming, registry
+from claude_swap.team import links, naming, registry
 from claude_swap.team.stores import SecretStore, get_backend
 
 _logger = logging.getLogger("claude-swap")
@@ -35,10 +35,13 @@ class SyncReport:
     removed: list[str] = field(default_factory=list)
     reactivated: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # "email: reason"
+    # Linked slots (team/links.py) whose account left the vault: unlinked,
+    # never removed, since they are the admin's own login.
+    unlinked: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
-        return bool(self.added or self.updated or self.removed)
+        return bool(self.added or self.updated or self.removed or self.unlinked)
 
     def to_json(self) -> dict:
         return {
@@ -48,6 +51,7 @@ class SyncReport:
             "removed": self.removed,
             "reactivated": self.reactivated,
             "skipped": self.skipped,
+            "unlinked": self.unlinked,
         }
 
 
@@ -56,6 +60,7 @@ class _Plan:
     team: str
     fetched: list[tuple[dict, str]] = field(default_factory=list)  # (payload, revision)
     gone: list[str] = field(default_factory=list)  # emails no longer in the vault
+    unlink: list[str] = field(default_factory=list)  # linked emails no longer in the vault
     skipped: list[str] = field(default_factory=list)
 
 
@@ -73,6 +78,9 @@ def plan(switcher, team: str, store: SecretStore) -> _Plan:
     """Read the vault (network) and decide what changes, without writing anything."""
     result = _Plan(team)
     local = _team_slots(switcher, team)
+    # The admin's own login of a team account, linked as its usage source:
+    # never given a second (setup-token) slot here, never removed.
+    linked = links.linked_emails(switcher._get_sequence_data() or {}, team)
     seen: set[str] = set()
     for info in store.list_secrets():
         tags = info.tags
@@ -82,6 +90,8 @@ def plan(switcher, team: str, store: SecretStore) -> _Plan:
         if not email:
             continue
         seen.add(email)
+        if email in linked:
+            continue
         slot = local.get(email)
         if slot is not None and slot[1].get("teamSecretRevision") == info.revision:
             continue
@@ -100,6 +110,7 @@ def plan(switcher, team: str, store: SecretStore) -> _Plan:
             continue
         result.fetched.append((payload, revision))
     result.gone = sorted(set(local) - seen)
+    result.unlink = sorted(linked - seen)
     return result
 
 
@@ -158,6 +169,11 @@ def apply(switcher, p: _Plan) -> SyncReport:
             report.skipped.append(f"{email}: not removed ({e})")
             continue
         report.removed.append(email)
+    for email in p.unlink:
+        slot = links.linked_slots(switcher._get_sequence_data() or {}, p.team).get(email)
+        if slot is not None:
+            links.set_link(switcher, slot[0], None)
+            report.unlinked.append(email)
     return report
 
 
