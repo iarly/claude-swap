@@ -19,7 +19,7 @@ cswap never grants roles.
 ## Commands
 
 ```bash
-# everyone, once per machine (needs: uv tool install "claude-swap[azure]")
+# everyone, once per machine (needs: uv tool install "cswap-teams[azure]")
 cswap login az --subscription-id <id> --keyvault <vault-name>
 
 # the admin

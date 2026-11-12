@@ -684,7 +684,7 @@ def test_run_without_rumps_raises_clean_error(monkeypatch):
     it into the error type the CLI renders with the install hint.
     """
     monkeypatch.setitem(sys.modules, "rumps", None)
-    with pytest.raises(ClaudeSwitchError, match=r"claude-swap\[menubar\]"):
+    with pytest.raises(ClaudeSwitchError, match=r"cswap-teams\[menubar\]"):
         menubar.run(switcher=None)
 
 

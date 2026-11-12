@@ -19,6 +19,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from claude_swap.distribution import DIST_NAME
 from claude_swap.exceptions import AzureExtraMissing, TeamAuthRequired, TeamError
 from claude_swap.fsutil import atomic_write_text
 
@@ -43,8 +44,8 @@ def require_azure():
             _azure_logger.addHandler(logging.NullHandler())
     except ImportError:
         raise AzureExtraMissing(
-            "Team features need the Azure SDK: install 'claude-swap[azure]' "
-            "(e.g. 'uv tool install \"claude-swap[azure]\"')"
+            f"Team features need the Azure SDK: install '{DIST_NAME}[azure]' "
+            f"(e.g. 'uv tool install --force \"{DIST_NAME}[azure]\"')"
         ) from None
     return identity
 

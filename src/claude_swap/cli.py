@@ -1157,15 +1157,16 @@ def _menubar_extra_missing() -> str | None:
 
     if importlib.util.find_spec("rumps") is not None:
         return None
+    from claude_swap.distribution import DIST_NAME
     from claude_swap.update_check import _detect_install_method
 
     method = _detect_install_method()
     if method == "uv":
-        remedy = "uv tool install --force 'claude-swap[menubar]'"
+        remedy = f"uv tool install --force '{DIST_NAME}[menubar]'"
     elif method == "pipx":
-        remedy = "pipx install --force 'claude-swap[menubar]'"
+        remedy = f"pipx install --force '{DIST_NAME}[menubar]'"
     else:
-        remedy = "pip install 'claude-swap[menubar]'"
+        remedy = f"pip install '{DIST_NAME}[menubar]'"
     return f"The menu bar needs the 'menubar' extra. Install it with: {remedy}"
 
 

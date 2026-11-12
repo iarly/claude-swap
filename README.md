@@ -1,30 +1,32 @@
 <!-- README rule: say what the user can do, give a minimal example, and mention only caveats that change their decision.
      Mechanics go in docs/, rationale in the PR. When behavior changes, edit the existing text instead of appending. -->
 
-# claude-swap
+# cswap-teams
 
 Multi-account switcher for Claude Code. Easily switch between multiple Claude accounts without logging out, or let it switch for you before you hit a rate limit. Track usage for every account in a live dashboard, and run accounts in parallel. Works with both the Claude Code CLI and the VS Code extension.
+
+**This is a fork of [claude-swap](https://github.com/realiti4/claude-swap)** that adds [team accounts through Azure Key Vault](#share-accounts-with-a-team-azure-key-vault). It installs as `cswap-teams`, keeps the same `cswap` command, and reads the same accounts, so you can move between the two without re-adding anything. Uninstall `claude-swap` first: both install a `cswap` command.
 
 ## Installation
 
 ### Using uv (recommended)
 
 ```bash
-uv tool install claude-swap
+uv tool install cswap-teams              # or "cswap-teams[azure]" for team accounts
 ```
 
 ### Using pipx
 
 ```bash
-pipx install claude-swap
+pipx install cswap-teams
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/realiti4/claude-swap.git
+git clone https://github.com/iarly/claude-swap.git
 cd claude-swap
-uv sync
+uv sync --extra azure
 uv run cswap help
 ```
 
@@ -33,8 +35,8 @@ uv run cswap help
 ```bash
 cswap upgrade          # uv/pipx installs on macOS/Linux: auto-detects and upgrades
 # or run your installer directly:
-uv tool upgrade claude-swap
-pipx upgrade claude-swap
+uv tool upgrade cswap-teams
+pipx upgrade cswap-teams
 ```
 
 ## Usage
@@ -138,7 +140,7 @@ Defaults like the threshold and cooldown are configurable with `cswap config set
 
 </details>
 
-The exact rules (margins, landing, polling cadence, tier handling) are in [docs/auto-switch.md](https://github.com/realiti4/claude-swap/blob/main/docs/auto-switch.md).
+The exact rules (margins, landing, polling cadence, tier handling) are in [docs/auto-switch.md](https://github.com/iarly/claude-swap/blob/main/docs/auto-switch.md).
 
 ### Run multiple accounts at the same time (session mode)
 
@@ -275,7 +277,7 @@ On Linux/WSL, set `XDG_DATA_HOME` to override the default location.
 Needs the `menubar` extra (macOS only):
 
 ```bash
-uv tool install 'claude-swap[menubar]'   # or: pipx install 'claude-swap[menubar]'
+uv tool install 'cswap-teams[menubar]'   # or: pipx install 'cswap-teams[menubar]'
 cswap menubar
 ```
 
@@ -290,7 +292,7 @@ cswap menubar --uninstall-service   # stop it and remove the LaunchAgent
 cswap menubar --foreground          # run attached to this terminal, for debugging
 ```
 
-`cswap upgrade` restarts a running menu bar when the build changed. The wrapper app in `/Applications`, file locations, environment handling and the Login Items switch are in [docs/menubar.md](https://github.com/realiti4/claude-swap/blob/main/docs/menubar.md).
+`cswap upgrade` restarts a running menu bar when the build changed. The wrapper app in `/Applications`, file locations, environment handling and the Login Items switch are in [docs/menubar.md](https://github.com/iarly/claude-swap/blob/main/docs/menubar.md).
 
 </details>
 
@@ -385,7 +387,7 @@ Every payload carries a `schemaVersion` (currently `1`); on a handled error stdo
 
 `cswap auto --json` emits an event *stream* instead — one JSON object per line (`{"schemaVersion":1,"event":"switch","ts":…, …}` with kinds like `poll`, `switch`, `no-switch`, `account-quarantined`, `all-exhausted`, `error`). The contract is additive: new kinds and fields may appear, so scripts should ignore unknown ones.
 
-Every optional field (usage age, last-known usage, fetch errors, pace, login expiry, …) is listed in [docs/json-output.md](https://github.com/realiti4/claude-swap/blob/main/docs/json-output.md).
+Every optional field (usage age, last-known usage, fetch errors, pace, login expiry, …) is listed in [docs/json-output.md](https://github.com/iarly/claude-swap/blob/main/docs/json-output.md).
 
 ### Add an account from a raw token or API key
 
@@ -414,25 +416,41 @@ cswap add-token --email user@example.com     # optional label override
 
 ### Share accounts with a team (Azure Key Vault)
 
-Put setup-tokens or API keys in a team's Azure Key Vault, with access controlled by Entra ID, and see who is on which account. Needs `uv tool install "claude-swap[azure]"`.
+Keep API keys or setup-tokens in an Azure Key Vault, give access through Entra ID groups, and every member's cswap pulls them, renews them when the admin replaces one, and shows who is on which account. Needs `uv tool install "cswap-teams[azure]"`, a Key Vault and a Storage account (the table holds presence).
 
 ```bash
-cswap login az --subscription-id <id> --keyvault <vault-name>
+cswap login az --subscription-id <id> --keyvault <vault-name>                 # everyone, once per machine
 cswap team register xpto --storage https://<account>.table.core.windows.net   # admin, once
-cswap add-token sk-ant-oat01-... --email shared1@example.com --into xpto      # admin
+cswap add-token sk-ant-api03-... --email shared1@example.com --into xpto      # admin
 cswap team join xpto                                                           # members
 cswap team status
 ```
 
-`cswap watch` then groups accounts by team, shows who is on each, and picks up tokens the admin replaces. Only `add-token` accounts can be shared, because a normal login's token rotates. Setup, roles and details: [docs/team.md](https://github.com/realiti4/claude-swap/blob/main/docs/team.md).
+Only `add-token` accounts can be shared: a normal login's refresh token is single-use, so two copies log each other out.
+
+**What you can do with it**
+
+| You want to | How |
+|---|---|
+| Hand Console API keys to a team, revocable per person | Put the keys in the vault with `--into`. Access is the vault's Entra ID role: remove someone from the group and they get no new key. API keys have no 5-hour window and their usage is in the Console. |
+| Use your own setup-tokens on all your machines | A team of one: your vault, `team join` on each machine. A token you replace reaches every machine on the next sync. |
+| See who is on which account | `cswap team status`, or `cswap watch`, which groups accounts by team and lists the people on each (away after 15 minutes without a heartbeat). |
+| Spread people across accounts | `cswap auto` prefers, among the accounts it would pick anyway, the one with fewest people on it. |
+| Show a setup-token's usage without spending a probe | The admin who also holds the account's normal login runs `add-token --into` on that machine: the login is linked instead of adding a second slot, and its usage, read for free, is shared with the team while the admin's `watch` or `auto` runs. |
+| Rotate a leaked or departed person's token | Revoke it at Anthropic, then `add-token <new> --email ... --into xpto`. Members pick it up within `team.syncIntervalSeconds` (5 min) in the dashboard, at once when the old one is refused, or with `cswap team sync`. A token already on a machine stays usable until it is revoked. |
+| Remove an account from everyone | `cswap team remove xpto shared1@example.com`. Members drop it on their next sync (switching away first if it was active). |
+
+A setup-token or a normal login draws on the subscription of the person who created it: Claude Pro/Max and Team seats are for one person, so for a team use Console API keys or a seat each.
+
+Setup, roles, every command and the limits: [docs/team.md](https://github.com/iarly/claude-swap/blob/main/docs/team.md).
 
 ## Documentation
 
-- [docs/auto-switch.md](https://github.com/realiti4/claude-swap/blob/main/docs/auto-switch.md) — the exact auto-switch rules: hysteresis margins, landing rules, per-account thresholds and tiers, polling cadence. Read it to find out why it did or didn't switch.
-- [docs/json-output.md](https://github.com/realiti4/claude-swap/blob/main/docs/json-output.md) — every field in `--json` output, including the optional ones. Read it before writing a script against `cswap list --json` or `cswap auto --json`.
-- [docs/menubar.md](https://github.com/realiti4/claude-swap/blob/main/docs/menubar.md) — how the macOS menu bar runs under launchd: start at login, the wrapper app in `/Applications`, file locations, upgrades, the Login Items switch. Read it when the icon is missing or the service misbehaves.
+- [docs/auto-switch.md](https://github.com/iarly/claude-swap/blob/main/docs/auto-switch.md) — the exact auto-switch rules: hysteresis margins, landing rules, per-account thresholds and tiers, polling cadence. Read it to find out why it did or didn't switch.
+- [docs/json-output.md](https://github.com/iarly/claude-swap/blob/main/docs/json-output.md) — every field in `--json` output, including the optional ones. Read it before writing a script against `cswap list --json` or `cswap auto --json`.
+- [docs/menubar.md](https://github.com/iarly/claude-swap/blob/main/docs/menubar.md) — how the macOS menu bar runs under launchd: start at login, the wrapper app in `/Applications`, file locations, upgrades, the Login Items switch. Read it when the icon is missing or the service misbehaves.
 
-- [docs/team.md](https://github.com/realiti4/claude-swap/blob/main/docs/team.md) — sharing accounts through Azure Key Vault: what to create in Azure, the roles, every `cswap team` command, what syncs on its own and the limits.
+- [docs/team.md](https://github.com/iarly/claude-swap/blob/main/docs/team.md) — sharing accounts through Azure Key Vault: what to create in Azure, the roles, every `cswap team` command, what syncs on its own and the limits.
 
 `cswap --help` and `cswap <command> --help` document every flag.
 
@@ -447,9 +465,9 @@ cswap purge
 Then uninstall the tool:
 
 ```bash
-uv tool uninstall claude-swap
+uv tool uninstall cswap-teams
 # or
-pipx uninstall claude-swap
+pipx uninstall cswap-teams
 ```
 
 ## Requirements

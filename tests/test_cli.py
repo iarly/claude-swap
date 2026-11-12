@@ -1027,7 +1027,7 @@ class TestCLI:
 
         monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
         monkeypatch.setattr("claude_swap.update_check._detect_install_method", lambda: "uv")
-        assert "uv tool install --force 'claude-swap[menubar]'" in cli._menubar_extra_missing()
+        assert "uv tool install --force 'cswap-teams[menubar]'" in cli._menubar_extra_missing()
         monkeypatch.setattr("claude_swap.update_check._detect_install_method", lambda: "pipx")
         assert "pipx install --force" in cli._menubar_extra_missing()
         monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())

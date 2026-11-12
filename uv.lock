@@ -286,50 +286,6 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-swap"
-version = "1.1.0b1"
-source = { editable = "." }
-dependencies = [
-    { name = "textual" },
-    { name = "truststore" },
-]
-
-[package.optional-dependencies]
-azure = [
-    { name = "azure-data-tables" },
-    { name = "azure-identity" },
-    { name = "azure-keyvault-secrets" },
-]
-menubar = [
-    { name = "rumps" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-xdist" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "azure-data-tables", marker = "extra == 'azure'", specifier = ">=12.6" },
-    { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.19" },
-    { name = "azure-keyvault-secrets", marker = "extra == 'azure'", specifier = ">=4.9" },
-    { name = "rumps", marker = "extra == 'menubar'", specifier = ">=0.4.0" },
-    { name = "textual", specifier = ">=8.2.8,<9" },
-    { name = "truststore", specifier = ">=0.10.4" },
-]
-provides-extras = ["menubar", "azure"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-xdist", specifier = ">=3.5" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -399,6 +355,50 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bf/8d6ebc7dded797bd0f0160d52188021211f011a2b164ef0ae1dac4587465/cryptography-50.0.2-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:7a8701d6b584d76e909e3d305b7d126b41439876a5aaf76cddc67fc230eafa2e", size = 4897738, upload-time = "2026-09-30T15:29:43.106Z" },
     { url = "https://files.pythonhosted.org/packages/d4/aa/f3f6e0de7e6253b8baa8b2d8fb9d50924fa75cee3d4624bd4bc1208ee923/cryptography-50.0.2-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:ce47f66801c20ec6c6632453bb5960fe38939e9306970b48b3a5a26de7745d94", size = 5058280, upload-time = "2026-09-30T15:29:44.827Z" },
     { url = "https://files.pythonhosted.org/packages/f6/b6/a1faf3a27ae9405fb34b1713cc73b2d8a26b04d5c561578fa2e6ef3e5bb9/cryptography-50.0.2-cp39-abi3-win_amd64.whl", hash = "sha256:4e81d95e5bafc2d6e34e4bed780e53e4d5b9a2f928573428aa4d35fbec1eb0de", size = 3854095, upload-time = "2026-09-30T15:29:46.782Z" },
+]
+
+[[package]]
+name = "cswap-teams"
+version = "1.2.0b1"
+source = { editable = "." }
+dependencies = [
+    { name = "textual" },
+    { name = "truststore" },
+]
+
+[package.optional-dependencies]
+azure = [
+    { name = "azure-data-tables" },
+    { name = "azure-identity" },
+    { name = "azure-keyvault-secrets" },
+]
+menubar = [
+    { name = "rumps" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-xdist" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "azure-data-tables", marker = "extra == 'azure'", specifier = ">=12.6" },
+    { name = "azure-identity", marker = "extra == 'azure'", specifier = ">=1.19" },
+    { name = "azure-keyvault-secrets", marker = "extra == 'azure'", specifier = ">=4.9" },
+    { name = "rumps", marker = "extra == 'menubar'", specifier = ">=0.4.0" },
+    { name = "textual", specifier = ">=8.2.8,<9" },
+    { name = "truststore", specifier = ">=0.10.4" },
+]
+provides-extras = ["menubar", "azure"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-xdist", specifier = ">=3.5" },
 ]
 
 [[package]]
