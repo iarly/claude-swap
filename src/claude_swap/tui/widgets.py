@@ -516,17 +516,30 @@ class AccountCard(Static):
         super().__init__()
         self._acc = acc
         self._threshold = threshold
+        self._people: Text | None = None
 
     def set_account(self, acc: AccountSnapshot) -> None:
         self._acc = acc
         self.refresh(layout=True)
 
+    def set_people(self, people: Text | None) -> None:
+        """The team members on this account (``cswap team``), under the card."""
+        if (people.plain if people else None) == (self._people.plain if self._people else None):
+            return
+        self._people = people
+        self.refresh(layout=True)
+
     def render(self) -> Text:
         width = self.size.width or 80
-        return fitted_card_text(
+        text = fitted_card_text(
             self._acc, width, width, threshold=self._threshold,
             palette=Palette.from_theme(self.app.current_theme),
         )
+        if self._people is not None:
+            text = text.copy()
+            text.append("\n")
+            text.append(self._people)
+        return text
 
 
 class AccountItem(ListItem):
@@ -536,11 +549,45 @@ class AccountItem(ListItem):
         super().__init__(AccountCard(acc))
         self.number = acc.number
         self.email = acc.email
+        self.team = acc.team
 
     def set_account(self, acc: AccountSnapshot) -> None:
         self.number = acc.number
         self.email = acc.email
+        self.team = acc.team
         self.query_one(AccountCard).set_account(acc)
+
+    def set_people(self, people: Text | None) -> None:
+        self.query_one(AccountCard).set_people(people)
+
+
+class GroupHeader(ListItem):
+    """A non-selectable heading in the account list ("Team xpto", "Personal")."""
+
+    def __init__(self, label: str) -> None:
+        super().__init__(Static(label, markup=False), disabled=True)
+        self.label = label
+        self.add_class("group-header")
+
+
+def people_text(people: list[tuple[str, bool, str]], *, limit: int = 4) -> Text | None:
+    """``👤 ana, bruno (+2)`` with away people dimmed and their age.
+
+    ``people`` is ``[(short name, away, age text)]``, present ones first.
+    """
+    if not people:
+        return None
+    text = Text("👤 ", style="bold")
+    for i, (name, away, age) in enumerate(people[:limit]):
+        if i:
+            text.append(", ")
+        if away:
+            text.append(f"{name} ({age})", style="dim")
+        else:
+            text.append(name)
+    if len(people) > limit:
+        text.append(f" (+{len(people) - limit})", style="dim")
+    return text
 
 
 class MenuItem(ListItem):

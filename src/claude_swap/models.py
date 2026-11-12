@@ -251,6 +251,13 @@ class AccountSnapshot:
     # unreadable; see oauth.login_expires_at_epoch. Feeds the "re-login in
     # 5d 12h" note every account view shows while the login is due.
     login_expires_at: float | None = None
+    #: Team the account was shared through (``team sync``), or "" for a
+    #: personal one. Defaulted for the same reason as ``policy``.
+    team: str = ""
+    #: ``team`` comes from a link (``team/links.py``): this is the admin's own
+    #: login of a team account, not a slot the team's vault owns. A vault sync
+    #: can't repair its token, so a dead one must not trigger one.
+    team_linked: bool = False
 
     @property
     def display_tag(self) -> str:

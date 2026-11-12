@@ -2,7 +2,9 @@
 
 from importlib.metadata import version
 
-__version__ = version("claude-swap")
+from claude_swap.distribution import DIST_NAME
+
+__version__ = version(DIST_NAME)
 
 from claude_swap.switcher import ClaudeAccountSwitcher
 

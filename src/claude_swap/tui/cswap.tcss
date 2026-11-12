@@ -64,6 +64,16 @@ Screen {
     background: $panel;
 }
 
+#accounts GroupHeader {
+    margin-bottom: 0;
+    border-left: none;
+    padding: 0 0;
+}
+#accounts GroupHeader Static {
+    color: $secondary;
+    text-style: bold;
+}
+
 MenuItem Static { color: $foreground; }
 MenuItem Static.menu-item-muted { color: $secondary; }
 

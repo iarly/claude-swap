@@ -7433,3 +7433,63 @@ class TestHeaderProbeReadings:
         })
         assert outcome is TickOutcome.SWITCHED
         assert h.active_number() == 3
+
+
+class TestTeamOccupancy:
+    """`cswap team` presence: among healthy landings, the least crowded wins."""
+
+    def _args(self, harness, trigger="proactive"):
+        from claude_swap.settings import AutoSwitchSettings
+
+        return dict(
+            trigger=trigger,
+            consume_first=False,
+            oauth_candidates=["1", "3"],
+            usage={"1": _usage(40), "2": _usage(96), "3": _usage(50)},
+            headroom={"1": 60.0, "2": 4.0, "3": 50.0},
+            current="2",
+            active_headroom=4.0,
+            settings=AutoSwitchSettings(),
+            now=harness.clock.now,
+        )
+
+    def test_without_occupancy_ranking_is_unchanged(self, harness):
+        ranked, _, _ = harness.engine._rank_candidates(no_return=None, **self._args(harness))
+        same, _, _ = harness.engine._rank_candidates(
+            no_return=None, occupancy=None, **self._args(harness)
+        )
+        assert list(ranked) == list(same) == ["1", "3"]
+
+    def test_proactive_prefers_the_freer_account(self, harness):
+        ranked, _, _ = harness.engine._rank_candidates(
+            no_return=None, occupancy={"1": 2, "3": 0}, **self._args(harness)
+        )
+        assert list(ranked) == ["3", "1"]
+
+    def test_escape_keeps_room_first(self, harness):
+        ranked, _, _ = harness.engine._rank_candidates(
+            no_return=None, occupancy={"1": 2, "3": 0}, **self._args(harness, "at-limit")
+        )
+        assert list(ranked) == ["1", "3"]
+
+    def test_no_team_leaves_tick_occupancy_none(self, harness):
+        harness.engine._refresh_team_presence()
+        assert harness.engine._tick_occupancy is None
+
+    def test_presence_maps_people_to_slots(self, harness, team_backend):
+        from claude_swap.team import registry
+        from claude_swap.team.stores import PresenceRow
+
+        s = harness.switcher
+        seq = s._get_sequence_data()
+        seq["accounts"]["3"]["team"] = "xpto"
+        s._write_json(s.sequence_file, seq)
+        registry.put(s.backup_dir, "xpto", vault_url="https://kv/", table_endpoint="https://t", table="tb")
+        now = harness.clock.now
+        table = team_backend.table("https://t", "tb")
+        table.rows["xpto"] = {
+            "a": PresenceRow("xpto", "ana@corp", "pc2", "c@example.com", now, now),
+            "b": PresenceRow("xpto", "bob@corp", "pc3", "c@example.com", now, now),
+        }
+        harness.engine._refresh_team_presence()
+        assert harness.engine._tick_occupancy == {"1": 0, "2": 0, "3": 2}

@@ -34,7 +34,7 @@ def _uv_pip_list(rows: list[dict]) -> MagicMock:
     return MagicMock(returncode=0, stdout=json.dumps(rows))
 
 
-_OUTDATED = [{"name": "claude-swap", "version": "0.27.2", "latest_version": "0.28.0"}]
+_OUTDATED = [{"name": "cswap-teams", "version": "0.27.2", "latest_version": "0.28.0"}]
 
 
 def _write_cache(path, version, timestamp=None):
@@ -269,7 +269,7 @@ class TestCheckForUpdateMessage:
         monkeypatch.setattr("claude_swap.update_check.sys.prefix", str(tmp_path))
         monkeypatch.delenv("UV_EXCLUDE_NEWER", raising=False)
         monkeypatch.setattr("claude_swap.update_check._detect_install_method", lambda: "uv")
-        mock_run.return_value = _uv_pip_list([{"name": "claude-swap", "latest_version": "0.4.0"}])
+        mock_run.return_value = _uv_pip_list([{"name": "cswap-teams", "latest_version": "0.4.0"}])
 
         result = check_for_update("0.3.2")
 
@@ -290,7 +290,7 @@ class TestCheckForUpdateMessage:
         result = check_for_update("0.3.2")
 
         assert result is not None
-        assert "pipx upgrade claude-swap" in result
+        assert "pipx upgrade cswap-teams" in result
         assert "cswap upgrade" not in result
 
     @patch("claude_swap.update_check.urllib.request.urlopen")
@@ -525,10 +525,10 @@ class TestHeldBackReleaseNotice(_UvInstall):
         notice = held_back_release_notice("0.27.2")
 
         assert notice is not None
-        assert "claude-swap 0.28.0 is on PyPI" in notice
+        assert "cswap-teams 0.28.0 is on PyPI" in notice
         assert 'uv-receipt.toml: exclude-newer-span = "P14D"' in notice
-        assert 'To take it now:          uv tool upgrade claude-swap --exclude-newer "0 days"' in notice
-        assert "To restore the cooldown: uv tool upgrade claude-swap --exclude-newer P14D" in notice
+        assert 'To take it now:          uv tool upgrade cswap-teams --exclude-newer "0 days"' in notice
+        assert "To restore the cooldown: uv tool upgrade cswap-teams --exclude-newer P14D" in notice
         assert "uv tool install" not in notice
         assert "--exclude-newer" not in self._uv_command(mock_run)
 
@@ -568,7 +568,7 @@ class TestHeldBackReleaseNotice(_UvInstall):
 
         assert notice is not None
         assert "UV_EXCLUDE_NEWER=1 week" in notice
-        assert 'uv tool upgrade claude-swap --exclude-newer "0 days"' in notice
+        assert 'uv tool upgrade cswap-teams --exclude-newer "0 days"' in notice
         assert "overrides UV_EXCLUDE_NEWER" in notice
         assert "unset" not in notice
         assert "To restore the cooldown" not in notice
@@ -589,7 +589,7 @@ class TestHeldBackReleaseNotice(_UvInstall):
     def test_final_release_is_not_told_about_a_prerelease(self, mock_run, tmp_path):
         self._write_receipt(tmp_path, 'exclude-newer-span = "P14D"')
         mock_run.return_value = _uv_pip_list(
-            [{"name": "claude-swap", "latest_version": "0.28.0b1"}]
+            [{"name": "cswap-teams", "latest_version": "0.28.0b1"}]
         )
 
         assert held_back_release_notice("0.27.2") is None
@@ -612,12 +612,12 @@ class TestHeldBackReleaseNotice(_UvInstall):
 
         out = capsys.readouterr().out
         # The before -> after report is printed ahead of the held-back notice.
-        assert "claude-swap upgraded: 0.27.2 -> 0.28.0" in out
-        assert "claude-swap 0.28.0 is on PyPI" in out
+        assert "cswap-teams upgraded: 0.27.2 -> 0.28.0" in out
+        assert "cswap-teams 0.28.0 is on PyPI" in out
         assert out.index("upgraded:") < out.index("is on PyPI")
-        assert 'uv tool upgrade claude-swap --exclude-newer "0 days"' in out
+        assert 'uv tool upgrade cswap-teams --exclude-newer "0 days"' in out
         upgrade, listing = (c.args[0] for c in mock_run.call_args_list)
-        assert upgrade == ["uv", "tool", "upgrade", "claude-swap"]
+        assert upgrade == ["uv", "tool", "upgrade", "cswap-teams"]
         assert listing[:4] == ["uv", "pip", "list", "--outdated"]
 
     @patch("claude_swap.update_check.subprocess.run")
@@ -655,7 +655,7 @@ class TestHeldBackReleaseNotice(_UvInstall):
         assert run_self_upgrade("0.27.2") == 1
 
         out = capsys.readouterr().out
-        assert "uv tool upgrade claude-swap" in out
+        assert "uv tool upgrade cswap-teams" in out
         assert "is on PyPI" in out
         assert self._uv_command(mock_run)[:4] == ["uv", "pip", "list", "--outdated"]
 
@@ -670,7 +670,7 @@ class TestRunSelfUpgrade:
 
         assert run_self_upgrade() == 0
         mock_run.assert_called_once_with(
-            ["uv", "tool", "upgrade", "claude-swap"], check=False
+            ["uv", "tool", "upgrade", "cswap-teams"], check=False
         )
 
     @patch("claude_swap.update_check.subprocess.run")
@@ -681,7 +681,7 @@ class TestRunSelfUpgrade:
 
         assert run_self_upgrade() == 0
         mock_run.assert_called_once_with(
-            ["pipx", "upgrade", "claude-swap"], check=False
+            ["pipx", "upgrade", "cswap-teams"], check=False
         )
 
     @patch("claude_swap.update_check.subprocess.run")
@@ -699,9 +699,9 @@ class TestRunSelfUpgrade:
         assert run_self_upgrade() == 1
         mock_run.assert_not_called()
         err = capsys.readouterr().err
-        assert "uv tool upgrade claude-swap" in err
-        assert "pipx upgrade claude-swap" in err
-        assert "pip install --upgrade claude-swap" in err
+        assert "uv tool upgrade cswap-teams" in err
+        assert "pipx upgrade cswap-teams" in err
+        assert "pip install --upgrade cswap-teams" in err
 
     @patch(
         "claude_swap.update_check.subprocess.run", side_effect=FileNotFoundError
@@ -728,7 +728,7 @@ class TestRunSelfUpgradeReport:
             "claude_swap.update_check._installed_version_on_disk", return_value="0.28.0"
         ):
             assert run_self_upgrade("0.27.2") == 0
-        assert "claude-swap upgraded: 0.27.2 -> 0.28.0" in capsys.readouterr().out
+        assert "cswap-teams upgraded: 0.27.2 -> 0.28.0" in capsys.readouterr().out
 
     @patch("claude_swap.update_check.subprocess.run")
     @patch("claude_swap.update_check._detect_install_method", return_value="uv")
@@ -738,7 +738,7 @@ class TestRunSelfUpgradeReport:
             "claude_swap.update_check._installed_version_on_disk", return_value="0.27.2"
         ):
             assert run_self_upgrade("0.27.2") == 0
-        assert "claude-swap is still at 0.27.2" in capsys.readouterr().out
+        assert "cswap-teams is still at 0.27.2" in capsys.readouterr().out
 
     @patch("claude_swap.update_check.subprocess.run")
     @patch("claude_swap.update_check._detect_install_method", return_value="uv")
@@ -789,7 +789,7 @@ class TestRunSelfUpgradeWindows:
         assert run_self_upgrade() == 1
         mock_run.assert_not_called()
         out = capsys.readouterr().out
-        assert "uv tool upgrade claude-swap" in out
+        assert "uv tool upgrade cswap-teams" in out
 
     @patch("claude_swap.update_check.subprocess.run")
     @patch("claude_swap.update_check._detect_install_method", return_value="pipx")
@@ -797,7 +797,7 @@ class TestRunSelfUpgradeWindows:
         assert run_self_upgrade() == 1
         mock_run.assert_not_called()
         out = capsys.readouterr().out
-        assert "pipx upgrade claude-swap" in out
+        assert "pipx upgrade cswap-teams" in out
 
     @patch("claude_swap.update_check.subprocess.run")
     @patch("claude_swap.update_check._detect_install_method", return_value=None)
@@ -805,9 +805,9 @@ class TestRunSelfUpgradeWindows:
         assert run_self_upgrade() == 1
         mock_run.assert_not_called()
         err = capsys.readouterr().err
-        assert "uv tool upgrade claude-swap" in err
-        assert "pipx upgrade claude-swap" in err
-        assert "pip install --upgrade claude-swap" in err
+        assert "uv tool upgrade cswap-teams" in err
+        assert "pipx upgrade cswap-teams" in err
+        assert "pip install --upgrade cswap-teams" in err
 
 
 # --- build identity + the menu bar restart after an upgrade ------------------
@@ -934,5 +934,5 @@ class TestUpgradeRestartsARunningMenuBar:
             assert run_self_upgrade("0.27.2") == 0
         assert calls == [{"restart": True}]
         out = capsys.readouterr().out
-        assert "claude-swap upgraded: 0.27.2 -> 0.28.0" in out
+        assert "cswap-teams upgraded: 0.27.2 -> 0.28.0" in out
         assert "Menu bar restarted" in out

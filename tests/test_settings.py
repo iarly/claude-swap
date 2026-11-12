@@ -19,6 +19,7 @@ from claude_swap.settings import (
     RunSettings,
     UiSettings,
     UpdateSettings,
+    TeamSettings,
     UsageSettings,
     effective_settings,
     explicit_share_history,
@@ -286,6 +287,9 @@ class TestSettingSpecs:
         assert by_section["usage"] == {
             f.name for f in UsageSettings.__dataclass_fields__.values()
         }
+        assert by_section["team"] == {
+            f.name for f in TeamSettings.__dataclass_fields__.values()
+        }
 
     def test_defaults_match_dataclass(self):
         sources = {
@@ -294,6 +298,7 @@ class TestSettingSpecs:
             "run": RunSettings(),
             "updates": UpdateSettings(),
             "usage": UsageSettings(),
+            "team": TeamSettings(),
         }
         for spec in SETTING_SPECS.values():
             assert spec.default == getattr(sources[spec.section], spec.field)

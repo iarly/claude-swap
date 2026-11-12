@@ -1903,3 +1903,107 @@ class TestWeeklyTick:
         assert with_weekly["Fable"] == with_weekly["7d"]
         without = ticks(threshold=85.0)
         assert without["5h"] == without["7d"] == without["Fable"] == with_weekly["5h"]
+
+
+@pytest.mark.asyncio
+class TestTeamGrouping:
+    """`cswap team`: watch groups accounts by team and shows who is on each."""
+
+    def _fake(self, tmp_path):
+        from dataclasses import replace
+
+        return FakeSwitcher(
+            [
+                make_account(1, active=True),
+                replace(make_account(2, email="shared@example.com"), team="xpto"),
+                replace(make_account(3), team="xpto"),
+            ],
+            tmp_path,
+        )
+
+    async def test_watch_shows_team_headings_and_people(self, tmp_path):
+        from rich.text import Text
+        from textual.widgets import ListView
+
+        from claude_swap.team.presence import TeamPresence
+        from claude_swap.team.stores import PresenceRow
+        from claude_swap.tui.widgets import AccountCard, AccountItem, GroupHeader
+
+        app = make_app(self._fake(tmp_path))
+        async with app.run_test(size=(100, 60)) as pilot:
+            await settle(pilot)
+            await pilot.press("w")
+            await pilot.pause()
+            listview = app.screen.query_one("#accounts", ListView)
+            headers = [h.label for h in listview.query(GroupHeader)]
+            assert headers == ["Team xpto", "Personal accounts"]
+            assert [i.number for i in listview.query(AccountItem)] == ["2", "3", "1"]
+
+            now = time.time()
+            app.team_presence = TeamPresence(rows={"xpto": [
+                PresenceRow("xpto", "ana@corp", "pc", "shared@example.com", now, now),
+                PresenceRow("xpto", "old@corp", "pc", "shared@example.com", 0, now - 7200),
+            ]}, taken_at=now)
+            await pilot.pause()
+            card = next(i for i in listview.query(AccountItem) if i.number == "2").query_one(AccountCard)
+            people = card._people.plain if isinstance(card._people, Text) else ""
+            assert people.startswith("👤 ana") and "old (2 h ago)" in people
+            other = next(i for i in listview.query(AccountItem) if i.number == "3").query_one(AccountCard)
+            assert other._people is None
+
+    async def test_selection_skips_headings(self, tmp_path):
+        from textual.widgets import ListView
+
+        fake = self._fake(tmp_path)
+        app = make_app(fake)
+        async with app.run_test(size=(100, 60)) as pilot:
+            await settle(pilot)
+            await pilot.press("w")
+            await pilot.pause()
+            await pilot.press("s")
+            await pilot.pause()
+            listview = app.screen.query_one("#accounts", ListView)
+            # layout: [Team xpto, 2, 3, Personal accounts, 1]; active is 1
+            assert listview.index == 4
+            await pilot.press("up")
+            await pilot.pause()
+            assert listview.index == 2  # jumped over the "Personal accounts" heading
+            await pilot.press("enter")
+            await settle(pilot)
+            assert ("switch_to", "3") in fake.calls
+
+    async def test_no_team_no_headings(self, tmp_path):
+        from textual.widgets import ListView
+
+        from claude_swap.tui.widgets import GroupHeader
+
+        app = make_app(FakeSwitcher([make_account(1, active=True), make_account(2)], tmp_path))
+        async with app.run_test(size=(100, 40)) as pilot:
+            await settle(pilot)
+            await pilot.press("w")
+            await pilot.pause()
+            assert not list(app.screen.query_one("#accounts", ListView).query(GroupHeader))
+
+
+class TestDeadTeamTokens:
+    def test_dead_sentinel_on_team_account_only(self):
+        from dataclasses import replace
+
+        from claude_swap.json_output import USAGE_RELOGIN_REQUIRED
+        from claude_swap.tui.team import dead_team_tokens
+
+        dead = make_usage_at(time.time(), sentinel=USAGE_RELOGIN_REQUIRED)
+        personal = AccountsSnapshot("1", (make_account(1, entry=dead),), time.time())
+        team = AccountsSnapshot("1", (replace(make_account(1, entry=dead), team="x"),), time.time())
+        assert not dead_team_tokens(personal)
+        assert dead_team_tokens(team)
+
+    def test_linked_login_never_triggers_a_vault_sync(self):
+        from dataclasses import replace
+
+        from claude_swap.json_output import USAGE_TOKEN_EXPIRED
+        from claude_swap.tui.team import dead_team_tokens
+
+        expired = make_usage_at(time.time(), sentinel=USAGE_TOKEN_EXPIRED)
+        linked = replace(make_account(1, entry=expired), team="x", team_linked=True)
+        assert not dead_team_tokens(AccountsSnapshot("1", (linked,), time.time()))

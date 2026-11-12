@@ -388,6 +388,7 @@ def account_row(
     policy: AccountPolicy = AccountPolicy(),
     login_expires_at: str | None = None,
     subscription_plan: dict | None = None,
+    team: str = "",
 ) -> dict:
     """A full account row for ``--list``. ``backoff_until`` is the live
     backoff only; a lapsed one is the caller's to withhold."""
@@ -408,6 +409,10 @@ def account_row(
     # existing consumers keying on the base schema are unaffected.
     if disabled:
         row["disabled"] = True
+    # Additive field: the team a shared account came from (``cswap team``);
+    # personal accounts emit no key.
+    if team:
+        row["team"] = team
     # Same convention for the per-account policy: a slot on the global default
     # emits neither key, so a fleet that never sets a policy produces rows
     # byte-identical to those from before this feature existed.

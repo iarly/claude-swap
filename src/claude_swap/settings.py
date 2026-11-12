@@ -118,12 +118,33 @@ class UsageSettings:
     header_probe: bool = False
 
 
+@dataclass(frozen=True)
+class TeamSettings:
+    """Team accounts through Azure (``team`` section; see docs/team.md).
+
+    ``tenant_id``/``subscription_id``/``vault_url`` are what ``cswap login az``
+    stored; ``vault_url`` is the default vault for ``team register``/``join``.
+    The intervals pace the background work of the watch and ``auto``: vault
+    sync, presence reads, the heartbeat that keeps one's own presence row
+    fresh, and how old a row may get before that person counts as away.
+    """
+
+    tenant_id: str | None = None
+    subscription_id: str | None = None
+    vault_url: str | None = None
+    sync_interval_seconds: float = 300.0
+    presence_refresh_seconds: float = 60.0
+    presence_stale_seconds: float = 900.0
+    heartbeat_seconds: float = 120.0
+
+
 _SECTION_DEFAULT_SOURCES = {
     "autoswitch": AutoSwitchSettings,
     "ui": UiSettings,
     "run": RunSettings,
     "updates": UpdateSettings,
     "usage": UsageSettings,
+    "team": TeamSettings,
 }
 
 
@@ -211,6 +232,34 @@ SETTING_SPECS: dict[str, SettingSpec] = {
         SettingSpec(
             "usage", "headerProbe", "header_probe", "bool",
             help="Read setup-token usage from a 1-token Haiku request's rate-limit headers (opt-in: uses quota)",
+        ),
+        SettingSpec(
+            "team", "tenantId", "tenant_id", "string",
+            help="Entra ID tenant used by 'cswap login az'",
+        ),
+        SettingSpec(
+            "team", "subscriptionId", "subscription_id", "string",
+            help="Azure subscription given to 'cswap login az'",
+        ),
+        SettingSpec(
+            "team", "vaultUrl", "vault_url", "string",
+            help="Default Key Vault for 'cswap team register/join' (one vault per team)",
+        ),
+        SettingSpec(
+            "team", "syncIntervalSeconds", "sync_interval_seconds", "float", 60.0, 86400.0,
+            help="How often the watch re-syncs team tokens from the vault",
+        ),
+        SettingSpec(
+            "team", "presenceRefreshSeconds", "presence_refresh_seconds", "float", 15.0, 3600.0,
+            help="How often the watch and auto-switch re-read who is on which team account",
+        ),
+        SettingSpec(
+            "team", "presenceStaleSeconds", "presence_stale_seconds", "float", 60.0, 86400.0,
+            help="A presence row older than this counts as away",
+        ),
+        SettingSpec(
+            "team", "heartbeatSeconds", "heartbeat_seconds", "float", 30.0, 3600.0,
+            help="How often the watch and auto refresh your own presence row",
         ),
     )
 }
@@ -399,6 +448,26 @@ def load_usage_settings(backup_root: Path) -> UsageSettings:
     return UsageSettings(header_probe=header_probe)
 
 
+def load_team_settings(backup_root: Path) -> TeamSettings:
+    """Load the team section; a missing, mistyped or out-of-range key → its default."""
+    section = _read_raw(settings_path(backup_root)).get("team")
+    if not isinstance(section, dict):
+        return TeamSettings()
+    kwargs = {}
+    for spec in SETTING_SPECS.values():
+        if spec.section != "team" or spec.json_key not in section:
+            continue
+        value = section[spec.json_key]
+        if spec.kind == "string":
+            if isinstance(value, str) and value.strip():
+                kwargs[spec.field] = value.strip()
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            kwargs[spec.field] = min(max(float(value), spec.lo), spec.hi)
+        else:
+            _logger.warning("settings.json: team.%s %r is not a number; using the default", spec.json_key, value)
+    return TeamSettings(**kwargs)
+
+
 def save_settings(backup_root: Path, settings: AutoSwitchSettings) -> None:
     """Write the autoswitch section, preserving unknown keys and sections."""
     path = settings_path(backup_root)
@@ -573,6 +642,7 @@ def effective_settings(backup_root: Path) -> list[tuple[SettingSpec, object, boo
         "run": load_run_settings(backup_root),
         "updates": load_update_settings(backup_root),
         "usage": load_usage_settings(backup_root),
+        "team": load_team_settings(backup_root),
     }
     rows = []
     for spec in SETTING_SPECS.values():

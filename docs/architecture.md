@@ -25,6 +25,7 @@ It works on the same files and Keychain items Claude Code uses, and takes Claude
 - `session.py`: `SessionManager`, behind `cswap run`. `mappings.py` maps a directory to an account.
 - `usage_store.py`: `UsageStore`, the per-account usage table. `poll_policy.py` holds every polling number. `snapshot_source.py` is the read path for dashboards.
 - `oauth.py`: the token, usage and profile endpoints, the header probe, and the formatting of reset times. `subscription.py` reads the plan label; `pace.py` computes the weekly pace marker.
+- `team/`: accounts shared through Azure Key Vault and presence in Table Storage (`cswap team`, `cli_team.py`). `stores.py` defines the storage protocols, `azure_backend.py` is the only module that imports the Azure SDK, `sync.py` reads the vault and then writes slots, `presence.py` publishes and reads who is on which account. See docs/team.md.
 - `transfer.py`: export and import. `settings.py`: `settings.json`. `migrations.py`: one-time data migrations. `update_check.py`: the PyPI version check.
 
 **Storage and platform.** Leaf modules that the core calls.
@@ -62,6 +63,7 @@ Everything lives under the backup root (its location per platform is in the [REA
 | `settings.json` | `settings.py` | User preferences |
 | `autoswitch_state.json` | `autoswitch.py` | Cooldown and quarantined accounts |
 | `mappings.json` | `mappings.py` | Directory to account |
+| `teams.json`, `azure/` | `team/` | Joined teams, the Entra ID sign-in record, presence state |
 | `sessions/<num>-<email>/` | `session.py` | One Claude Code profile per account |
 
 ## Flows that cross modules
@@ -87,6 +89,8 @@ Read next: the module docstrings of `usage_store.py`, `poll_policy.py` and `snap
 5. records the new active slot in `sequence.json`.
 
 A failure rolls the earlier steps back. Everything under the locks is local I/O; the identity lookup that step 1 needs is fetched before the locks are taken.
+
+`_perform_switch` wraps that core (`_switch_core`) and, after every lock is released, calls `team.presence.after_switch`, which publishes team presence when the switch touched a team account. It is best-effort and never fails the switch.
 
 Read next: the module docstring of `claude_locks.py`, and the docstring of `_classify_outgoing_credential`.
 

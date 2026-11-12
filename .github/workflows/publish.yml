@@ -1,28 +1,92 @@
 name: Publish to PyPI
 
+# Publishes the fork as `cswap-teams` (`claude-swap` on PyPI is the upstream
+# project's). Trusted publishing: no API token is stored in GitHub; PyPI
+# trusts this workflow file in this repository instead (see RELEASING.md).
+#
+# - A published GitHub release (tag vX.Y.Z matching pyproject's version)
+#   builds, tests and uploads to PyPI.
+# - Running the workflow by hand uploads to TestPyPI, for a dry run.
+
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
 
-      - name: Install build dependencies
-        run: pip install build
+      - name: Check the tag matches the version
+        if: github.event_name == 'release'
+        run: |
+          version=$(uv version --short)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match pyproject version ${version}"
+            exit 1
+          fi
 
-      - name: Build package
-        run: python -m build
+      # Without the azure extra, as CI runs: the base install must work alone.
+      - name: Test
+        run: |
+          uv sync --locked
+          uv run pytest
+
+      - name: Build
+        run: uv build
+
+      - name: Check the distributions
+        run: uvx twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-pypi:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/cswap-teams/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/cswap-teams/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A dev rerun of the same version must not fail the dry run.
+          skip-existing: true

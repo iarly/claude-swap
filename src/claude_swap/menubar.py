@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from claude_swap import launch_agent, oauth, pace
+from claude_swap.distribution import DIST_NAME
 from claude_swap.exceptions import ClaudeSwitchError, CredentialReadError
 from claude_swap.fsutil import atomic_write_text
 from claude_swap.printer import warning
@@ -697,13 +698,13 @@ def framework_build_warning(
 
     if install_method == "uv":
         remedy = (
-            "  uv tool install --managed-python --force 'claude-swap[menubar]'"
+            f"  uv tool install --managed-python --force '{DIST_NAME}[menubar]'"
         )
     elif install_method == "pipx":
         remedy = (
             "  Reinstall against a non-framework interpreter, e.g. one from "
             "`uv python install 3.13`:\n"
-            "  pipx install --force --python <that python> 'claude-swap[menubar]'"
+            f"  pipx install --force --python <that python> '{DIST_NAME}[menubar]'"
         )
     else:
         remedy = (
@@ -730,7 +731,7 @@ def run(switcher) -> int:
         # error type the CLI already renders cleanly instead of a traceback.
         raise ClaudeSwitchError(
             "Menu bar mode requires 'rumps'. "
-            "Install with: pip install 'claude-swap[menubar]'"
+            f"Install with: pip install '{DIST_NAME}[menubar]'"
         ) from e
 
     from claude_swap import app_bundle
